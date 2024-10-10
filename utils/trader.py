@@ -1,7 +1,6 @@
 import pandas as pd
 import warnings
 import matplotlib.pyplot as plt
-import yfinance as yf
 
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.model_selection import train_test_split
