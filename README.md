@@ -31,3 +31,4 @@ All data for this project was obtained from the `yfinance` package.
  - scikit-learn
  - seaborn
  - numpy
+ - yfinance
