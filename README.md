@@ -12,3 +12,22 @@ The utils file contains a lot of useful classes with useful methods for our data
 
 `trader.py` contains the autotrader bot that implements our pairs trading strategy. It also has methods that plots buy-sell signals of the spread, and also the times at which the autotrader buys and sells each stock.
 ![image](https://github.com/user-attachments/assets/457c2be3-da25-4dd6-9da4-ebe2894dcd7c) ![image](https://github.com/user-attachments/assets/0ccb6527-51cf-4d35-9217-b857a9c5f2fd)
+
+# Goal of this Project
+ 1. Identified suitable pairs of stocks by testing each one for cointegration
+ 2. Determined hedge ratio using linear regression
+ 3. Used moving average and constructed two-standard-deviation Bollinger bands
+ 4. Use ARIMA model to forecast spread for the next day
+ 5. If forecasted spread breaches upper band, short spread. If forecasted spread breaches lower band, long spread.
+ 6. Profit?
+
+# Data 
+All data for this project was obtained from the `yfinance` package. 
+
+# Python Packages Used
+ - pandas
+ - statsmodels
+ - matplotlib
+ - scikit-learn
+ - seaborn
+ - numpy
