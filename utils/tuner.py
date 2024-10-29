@@ -1,5 +1,46 @@
 from statsmodels.tsa.arima.model import ARIMA
+from skopt import BayesSearchCV
+from skopt.space import Real, Integer
+from xgboost import XGBRegressor
 
+
+
+class XGBTuner():
+    """
+    Concrete class representing an object that tunes an XGBRegressor object.
+    """
+    def __init__(self):
+        pass
+    
+    def bayesian_optimisation(self, x_train, y_train):
+        """
+        WARNING: this takes a while to run!
+
+        Tunes the hyperparameters for an XGBRegressor using Bayesian optimisation.
+        Model performance is measured using k-fold cross validation with k=5.
+
+        Returns:
+            skopt.BayesSearchCV: returns a fitted optimiser. Hyperparameters and estimators 
+            can be extracted using the best_params_() and best_estimator_() method
+        """
+
+        param_space = {
+            'n_estimators': Integer(100, 1000),
+            'max_depth': Integer(3, 13),
+            'learning_rate': Real(0.01, 1.0),
+            'subsample': Real(0.5, 1),
+        }
+
+        optimiser = BayesSearchCV(XGBRegressor(),
+                                  param_space,
+                                  n_iter=50,
+                                  verbose=10
+                                  )
+        
+        optimiser.fit(x_train, y_train)
+
+        return optimiser
+    
 
 
 class ARIMATuner():

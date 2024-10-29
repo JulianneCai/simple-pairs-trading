@@ -28,28 +28,42 @@ class PairsFinder:
             np.array: matrix of p-values 
             list<tuple>: list of tuples of pairs of stock symbols
         """
+        # initialise dataframe, with columns given by stock symbols
         prices = pd.DataFrame(columns=stocks)
 
         for stock in stocks:
+            #  access price data using yfinance package
             data = yf.Ticker(stock).history(period='5y')
+            #  take log prices of stocks, and put them into dataframe
             prices[stock] = np.log(data['Close'])
+        # number of stocks
         n = int(prices.shape[1])
+        #  empty matrix
         score_matrix = np.zeros((n, n))
+        # empty pvalue matrix
         pvalue_matrix = np.ones((n, n))
 
         keys = prices.keys()
+        #  list for storing pairs of cointegrated stocks
         pairs = []
         for i in range(n):
             for j in range(i + 1, n):
+                # take each log stock price
                 S1 = prices[keys[i]]
                 S2 = prices[keys[j]]
 
+                #  test for cointegration
                 result = coint(S1, S2)
+                #  score
                 score = result[0]
+                #  pvalue of cointegration test
                 pvalue = result[1]
-
+                
+                #  populate matrices
                 score_matrix[i, j] = score
                 pvalue_matrix[i, j] = pvalue
+                #  if cointegration test is statistically significant
+                #  append to pairs
                 if pvalue < 0.05:
                     pairs.append((keys[i], keys[j]))
 
@@ -87,6 +101,7 @@ class PairsFinder:
         Returns:
             pandas.Series: the spread of the log price between the two stocks
         """
+        #  take log price of stocks
         log_price_X = np.log(yf.Ticker(pair[0]).history(period='5y')['Close'])
         log_price_Y = np.log(yf.Ticker(pair[1]).history(period='5y')['Close'])
 
@@ -130,11 +145,16 @@ class PairsFinder:
             log_price_Y
         )
 
+        #  we just want to get a best fit line, so we use it to predict itself
         pred = lin_model.predict(log_price_X)
 
         try: 
+            #  coef_ attribute occasional returns double list [[coef_]]
+            #  this happens if fit_intercept option is set to True
             hedge_ratio = lin_model.coef_[0][0]
         except TypeError:
+            #  in case fit_intercept option is False, just access first element of list
+            #  for the gradient of the line
             hedge_ratio = lin_model.coef_[0]
 
         #  rounds up the hedge ratio to an integer

@@ -1,6 +1,9 @@
 import pandas as pd
 import warnings
 import matplotlib.pyplot as plt
+import numpy as np
+
+import yfinance as yf
 
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.model_selection import train_test_split
@@ -8,13 +11,18 @@ from sklearn.model_selection import train_test_split
 from utils.pairs import PairsFinder
 
 
+
 class AutoTrader:
-    def __init__(self, price_X, price_Y, symbol_X, symbol_Y, money):
-        self.price_X = price_X
-        self.price_Y = price_Y
+    def __init__(self, symbol_X, symbol_Y, money):
 
         self.symbol_X = symbol_X
         self.symbol_Y = symbol_Y
+
+        self.price_X = yf.Ticker(self.symbol_X).history(period='5y')['Close']
+        self.price_Y = yf.Ticker(self.symbol_Y).history(period='5y')['Close']
+
+        self.return_X = self.price_X.diff()
+        self.return_Y = self.price_Y.diff()
 
         self.money = money
         self.init_balance = money
@@ -42,7 +50,21 @@ class AutoTrader:
         Returns:
             float: money
         """
-        return self.X_pos * x_price + self.Y_pos * y_price
+
+        #  if we are going long, then we need to spend money to buy the stocks
+        #  if we are going short, we are borrowing the shares, and then 
+        #  buying them back later to return (after price goes down)
+        if self.X_pos > 0:
+            X_pos = self.X_pos
+        else:
+            X_pos = 0
+
+        if self.Y_pos > 0:
+            Y_pos = self.Y_pos
+        else:
+            Y_pos = 0
+
+        return X_pos * x_price + Y_pos * y_price
     
     def long_spread(self):
         """
@@ -57,6 +79,118 @@ class AutoTrader:
         """
         self.X_pos -= 1
         self.Y_pos += self.hedge_ratio
+
+    def xgb_trade(self, preds, train, test):
+        warnings.filterwarnings(action='ignore')
+        window = 60 
+
+        spread = pd.concat([train, test], axis=0)
+
+        #  allows us to use rolling average and std data from training set
+
+        #  60 day moving average of spread
+        spread_ma = spread.rolling(window=window).mean()
+        #  60 day moving standard deviation
+        spread_std = spread.rolling(window=window).std()
+
+        #  construct upper Bollinger band as 2 std above moving average
+        upper_band = spread_ma + 2 * spread_std
+        #  lower Bollinger band is 2 std below moving average
+        lower_band = spread_ma - 2 * spread_std
+
+        price_X = self.price_X
+        price_Y = self.price_Y
+
+        #  ARIMA package likes lists better
+        train = train.to_list()
+
+        #  dataframe that keeps track of what the autotrader did
+        results = pd.DataFrame(columns=['money', 'buy', 'sell'], index=test.index)
+
+        #  prices of X and Y when we short them
+        short_price_X, long_price_X, short_price_Y, long_price_Y = 0, 0, 0, 0
+
+        #  profits from long and short positions
+        pnl_long, pnl_short = 0, 0
+
+        i = 0
+
+        for day in test.index:
+            #  fit our ARIMA model
+
+            results.loc[day, 'money'] = self.money
+
+            #  short the spread if forecast breaches upper band
+            if preds[0] >= upper_band[day]:
+                self.short_spread()
+
+                # self.money -= self.compute_money(price_X[day], price_Y[day])
+                short_price_X = price_X[day]
+                long_price_Y = price_Y[day]
+
+                results.loc[day, 'buy'] = True
+                results.loc[day, 'sell'] = False
+                results.loc[day, 'money'] = self.money
+
+                if self.money < 0:
+                    print('You are broke')
+                    return self.money, results
+
+            #  long the spread if forecast breaches lower band
+            elif preds[i] <= lower_band[day]:
+                self.long_spread()
+
+                long_price_X = price_X[day]
+                short_price_Y = price_Y[day]
+                # self.money -= self.compute_money(price_X[day], price_Y[day])
+
+                results.loc[day, 'buy'] = False
+                results.loc[day, 'sell'] = True
+                results.loc[day, 'money'] = self.money
+
+                if self.money < 0:
+                    print('You are broke')
+                    return results
+            #  if the spread is within the bands, sell stocks we bought, buy back 
+            #  those we sold
+            elif preds[i] > lower_band.loc[day] and preds[i] < upper_band.loc[day]:
+
+                if short_price_X != 0 and long_price_Y != 0:
+                    pnl_short += self.X_pos * (short_price_X - price_X[day])
+                    pnl_long += self.Y_pos * (price_Y[day] - long_price_Y)
+                    self.pnl += pnl_long + pnl_short
+                    self.money += self.pnl
+
+                if short_price_Y != 0 and long_price_X != 0:
+                    pnl_long += self.X_pos * (price_X[day] - long_price_X)
+                    pnl_short += self.Y_pos * (short_price_Y - price_Y[day])
+                    self.pnl += pnl_long + pnl_short
+                    self.money += self.pnl
+
+                self.X_pos = 0
+                self.Y_pos = 0
+                pnl_long, pnl_short = 0, 0
+                short_price_X, long_price_X, short_price_Y, long_price_Y = 0, 0, 0, 0
+
+                results.loc[day, 'buy'] = False
+                results.loc[day, 'sell'] = False
+                results.loc[day, 'money'] = self.money
+
+            #  append actual spread value to the training set
+            #  the next day, we will refit the ARIMA model on this new dataset
+            train.append(test[day])
+
+        results['PnL'] = results['money'].diff()
+
+        returns = results['money'].pct_change()
+        returns.dropna(inplace=True)
+
+        print(f'Final Balance: ${round(self.money, 2)}')
+        print(f'Cumulative Return: {round((self.money - self.init_balance) / self.init_balance * 100, 2)}%')
+        print(f'Annualised Sharpe Ratio: {round(np.sqrt(252) * np.mean(results['PnL']) / np.std(results['PnL']), 2)}')
+
+        return results
+
 
     def trade(self, arima_params, train, test):
         """
@@ -74,16 +208,20 @@ class AutoTrader:
             sold the spread at each time step, and our PnL.
         """
         warnings.filterwarnings(action='ignore')
-        window = 60
+        window = 60 
 
         spread = pd.concat([train, test], axis=0)
 
         #  allows us to use rolling average and std data from training set
 
+        #  60 day moving average of spread
         spread_ma = spread.rolling(window=window).mean()
+        #  60 day moving standard deviation
         spread_std = spread.rolling(window=window).std()
 
+        #  construct upper Bollinger band as 2 std above moving average
         upper_band = spread_ma + 2 * spread_std
+        #  lower Bollinger band is 2 std below moving average
         lower_band = spread_ma - 2 * spread_std
 
         price_X = self.price_X
@@ -94,6 +232,12 @@ class AutoTrader:
 
         #  dataframe that keeps track of what the autotrader did
         results = pd.DataFrame(columns=['money', 'buy', 'sell', 'pred'], index=test.index)
+
+        #  prices of X and Y when we short them
+        short_price_X, long_price_X, short_price_Y, long_price_Y = 0, 0, 0, 0
+
+        #  profits from long and short positions
+        pnl_long, pnl_short = 0, 0
 
         for day in test.index:
             #  fit our ARIMA model
@@ -110,12 +254,14 @@ class AutoTrader:
             #  short the spread if forecast breaches upper band
             if next_day_pred >= upper_band[day]:
                 self.short_spread()
-                self.money -= self.compute_money(price_X[day], price_Y[day])
-                self.pnl = self.money - self.init_balance
+
+                # self.money -= self.compute_money(price_X[day], price_Y[day])
+                short_price_X = price_X[day]
+                long_price_Y = price_Y[day]
 
                 results.loc[day, 'buy'] = True
                 results.loc[day, 'sell'] = False
-                results.loc[day, 'pnl'] = self.pnl
+                results.loc[day, 'money'] = self.money
 
                 if self.money < 0:
                     print('You are broke')
@@ -124,27 +270,57 @@ class AutoTrader:
             #  long the spread if forecast breaches lower band
             elif next_day_pred <= lower_band[day]:
                 self.long_spread()
-                self.money -= self.compute_money(price_X[day], price_Y[day])
-                self.pnl = self.money - self.init_balance
+
+                long_price_X = price_X[day]
+                short_price_Y = price_Y[day]
+                # self.money -= self.compute_money(price_X[day], price_Y[day])
 
                 results.loc[day, 'buy'] = False
                 results.loc[day, 'sell'] = True
-                results.loc[day, 'pnl'] = self.pnl
+                results.loc[day, 'money'] = self.money
 
                 if self.money < 0:
                     print('You are broke')
-                    return self.money, results
-            #  if the spread is within the bands, just do nothing
-            else:
+                    return results
+            #  if the spread is within the bands, sell stocks we bought, buy back 
+            #  those we sold
+            elif next_day_pred > lower_band[day] and next_day_pred < upper_band[day]:
+
+                if short_price_X != 0 and long_price_Y != 0:
+                    pnl_short += self.X_pos * (short_price_X - price_X[day])
+                    pnl_long += self.Y_pos * (price_Y[day] - long_price_Y)
+                    self.pnl += pnl_long + pnl_short
+                    self.money += self.pnl
+
+                if short_price_Y != 0 and long_price_X != 0:
+                    pnl_long += self.X_pos * (price_X[day] - long_price_X)
+                    pnl_short += self.Y_pos * (short_price_Y - price_Y[day])
+                    self.pnl += pnl_long + pnl_short
+                    self.money += self.pnl
+
+                self.X_pos = 0
+                self.Y_pos = 0
+                pnl_long, pnl_short = 0, 0
+                short_price_X, long_price_X, short_price_Y, long_price_Y = 0, 0, 0, 0
+
                 results.loc[day, 'buy'] = False
                 results.loc[day, 'sell'] = False
-                results.loc[day, 'pnl'] = self.pnl
+                results.loc[day, 'money'] = self.money
 
             #  append actual spread value to the training set
             #  the next day, we will refit the ARIMA model on this new dataset
             train.append(test[day])
 
-        return self.money, results
+        results['PnL'] = results['money'].diff()
+
+        returns = results['money'].pct_change()
+        returns.dropna(inplace=True)
+
+        print(f'Final Balance: ${round(self.money, 2)}')
+        print(f'Cumulative Return: {round((self.money - self.init_balance) / self.init_balance * 100, 2)}%')
+        print(f'Annualised Sharpe Ratio: {round(np.sqrt(252) * np.mean(results['PnL']) / np.std(results['PnL']), 2)}')
+
+        return results
 
     def plot_buy_sell(self, spread, results):
         """
