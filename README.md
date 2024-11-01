@@ -1,4 +1,4 @@
-# Pairs Trading with ARIMA
+# Pairs Trading using ARIMA and XGBoost
 
 Please see the Jupyter notebook to see how to use the code. 
 
