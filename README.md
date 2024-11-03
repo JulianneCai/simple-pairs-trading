@@ -32,6 +32,8 @@ All data for this project was obtained from the `yfinance` package.
  - statsmodels
  - matplotlib
  - scikit-learn
+ - scikit-optimize
  - seaborn
  - numpy
  - yfinance
+ - xgboost
