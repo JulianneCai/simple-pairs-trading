@@ -28,7 +28,9 @@ class XGBTuner():
             'n_estimators': Integer(100, 1000),
             'max_depth': Integer(3, 13),
             'learning_rate': Real(0.01, 1.0),
-            'subsample': Real(0.5, 1),
+            'gamma': Real(0.01, 5),
+            'reg_lambda': Real(0.01, 1)
+            # 'subsample': Real(0.2, 1),
         }
 
         optimiser = BayesSearchCV(XGBRegressor(),

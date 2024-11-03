@@ -31,14 +31,12 @@ class Trainer:
 
         df['daily_returns_close_squared'] = df['daily_returns_close'] ** 2
 
-        window = 2
+        window = 20
+
+        df['volume_change'] = df['Volume'].diff()
 
         df['hist_vol_close'] = df['daily_returns_close'].rolling(window=window).std() * sqrt(252 / window)
-
-        df['log_returns_close'] = log(df['Close']).diff()
-
-        df['real_vol_close'] = df['log_returns_close'].rolling(window=window).std() * sqrt(252 / window)
-        
+      
         return df
  
     def is_stationary(self, df):
@@ -77,7 +75,7 @@ class Trainer:
         plt.barh(sorted_importances.keys(), sorted_importances.values())
 
     
-    def generate_out_of_sample_features(self, df, lags):
+    def generate_out_of_sample_features(self, df, lags, target):
         """
         For out-of-sample predictions. In this case, the only features that 
         we will have access to are the lags, and the dates.
@@ -93,7 +91,7 @@ class Trainer:
         df['dayofmonth'] = df.index.day
 
         for lag in lags:
-            df['lag_' + str(lag)] = df['Close'].diff(lag)
+            df['lag_' + str(lag)] = df[target].diff(lag)
 
         return df
         
@@ -148,8 +146,8 @@ class ARIMATrainer(Trainer):
             model_fit = model.fit()
 
             #  forecast one day ahead 
-            pred = model_fit.forecast(steps=1)
-            y_preds.append(pred)
+            pred = model_fit.forecast()
+            y_preds.append(pred[0])
             train.append(obs)
 
         print(f'RMSE: {root_mean_squared_error(y_preds, test)}')
