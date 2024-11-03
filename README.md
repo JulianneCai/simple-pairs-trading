@@ -11,7 +11,10 @@ The utils file contains a lot of useful classes with useful methods for our data
 `tuner.py` contains methods for tuning the hyperparameters of an ARIMA model. It performs a grid search on a list of p, q, and d values, and then selects the best ones best of either AIC or BIC.
 
 `trader.py` contains the autotrader bot that implements our pairs trading strategy. It also has methods that plots buy-sell signals of the spread, and also the times at which the autotrader buys and sells each stock.
-![image](https://github.com/user-attachments/assets/457c2be3-da25-4dd6-9da4-ebe2894dcd7c) ![image](https://github.com/user-attachments/assets/0ccb6527-51cf-4d35-9217-b857a9c5f2fd)
+![Untitled](https://github.com/user-attachments/assets/d4a3be68-fd33-4fdf-b83a-5aad13d168a3)
+![Untitled](https://github.com/user-attachments/assets/ba592840-9bd2-41fa-808c-33a693188c47)
+
+
 
 # Goal of this Project
  1. Identified suitable pairs of stocks by testing each one for cointegration
