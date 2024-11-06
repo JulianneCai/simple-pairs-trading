@@ -106,7 +106,7 @@ class AutoTrader:
         train = train.to_list()
 
         #  dataframe that keeps track of what the autotrader did
-        results = pd.DataFrame(columns=['money', 'buy', 'sell'], index=test.index)
+        results = pd.DataFrame(columns=['money', 'buy', 'sell', 'exit'], index=test.index)
 
         #  prices of X and Y when we short them
         short_price_X, long_price_X, short_price_Y, long_price_Y = 0, 0, 0, 0
@@ -131,6 +131,7 @@ class AutoTrader:
 
                 results.loc[day, 'buy'] = False
                 results.loc[day, 'sell'] = True 
+                results.loc[day, 'exit'] = False
                 results.loc[day, 'money'] = self.money
 
                 if short_price_X != 0 and long_price_Y != 0:
@@ -160,6 +161,7 @@ class AutoTrader:
                 results.loc[day, 'buy'] = True 
                 results.loc[day, 'sell'] = False
                 results.loc[day, 'money'] = self.money
+                results.loc[day, 'exit'] = False
 
                 if short_price_X != 0 and long_price_Y != 0:
                     pnl_short += self.X_pos * (short_price_X - price_X[day])
@@ -186,20 +188,22 @@ class AutoTrader:
                     pnl_long += self.Y_pos * (price_Y[day] - long_price_Y)
                     self.pnl += pnl_long + pnl_short
                     self.money += self.pnl
+                    results.loc[day, 'exit'] = True
 
                 if short_price_Y != 0 and long_price_X != 0:
                     pnl_long += self.X_pos * (price_X[day] - long_price_X)
                     pnl_short += self.Y_pos * (short_price_Y - price_Y[day])
                     self.pnl += pnl_long + pnl_short
                     self.money += self.pnl
+                    results.loc[day, 'exit'] = True
 
                 self.X_pos = 0
                 self.Y_pos = 0
                 pnl_long, pnl_short = 0, 0
                 short_price_X, long_price_X, short_price_Y, long_price_Y = 0, 0, 0, 0
 
-                results.loc[day, 'buy'] = False
-                results.loc[day, 'sell'] = False
+                results.loc[day, 'buy'] = np.nan
+                results.loc[day, 'sell'] = np.nan
                 results.loc[day, 'money'] = self.money
 
             #  append actual spread value to the training set
@@ -257,7 +261,7 @@ class AutoTrader:
         train = train.to_list()
 
         #  dataframe that keeps track of what the autotrader did
-        results = pd.DataFrame(columns=['money', 'buy', 'sell', 'pred'], index=test.index)
+        results = pd.DataFrame(columns=['money', 'buy', 'sell', 'exit'], index=test.index)
 
         #  prices of X and Y when we short them
         short_price_X, long_price_X, short_price_Y, long_price_Y = 0, 0, 0, 0
@@ -276,8 +280,6 @@ class AutoTrader:
             pred = model_fit.forecast()
             next_day_pred = pred[0]
 
-            results.loc['pred', day] = next_day_pred
-
             #  short the spread if forecast breaches upper band
             if next_day_pred >= upper_band[day]:
                 self.short_spread()
@@ -289,6 +291,7 @@ class AutoTrader:
                 results.loc[day, 'buy'] = False
                 results.loc[day, 'sell'] = True 
                 results.loc[day, 'money'] = self.money
+                results.loc[day, 'exit'] = False
 
                 if short_price_X != 0 and long_price_Y != 0:
                     pnl_short += self.X_pos * (short_price_X - price_X[day])
@@ -317,6 +320,7 @@ class AutoTrader:
                 results.loc[day, 'buy'] = True
                 results.loc[day, 'sell'] = False 
                 results.loc[day, 'money'] = self.money
+                results.loc[day, 'exit'] = False
 
                 if short_price_X != 0 and long_price_Y != 0:
                     pnl_short += self.X_pos * (short_price_X - price_X[day])
@@ -341,20 +345,22 @@ class AutoTrader:
                     pnl_long += self.Y_pos * (price_Y[day] - long_price_Y)
                     self.pnl += pnl_long + pnl_short
                     self.money += self.pnl
+                    results.loc[day, 'exit'] = True
 
                 if short_price_Y != 0 and long_price_X != 0:
                     pnl_long += self.X_pos * (price_X[day] - long_price_X)
                     pnl_short += self.Y_pos * (short_price_Y - price_Y[day])
                     self.pnl += pnl_long + pnl_short
                     self.money += self.pnl
+                    results.loc[day, 'exit'] = True
 
                 self.X_pos = 0
                 self.Y_pos = 0
                 pnl_long, pnl_short = 0, 0
                 short_price_X, long_price_X, short_price_Y, long_price_Y = 0, 0, 0, 0
 
-                results.loc[day, 'buy'] = False
-                results.loc[day, 'sell'] = False
+                results.loc[day, 'buy'] = np.nan
+                results.loc[day, 'sell'] = np.nan
                 results.loc[day, 'money'] = self.money
 
             #  append actual spread value to the training set
@@ -382,10 +388,12 @@ class AutoTrader:
         """
         sell = spread[(results[results['sell'] == True]).index]
         buy = spread[(results[results['buy'] == True]).index]
+        exit = spread[(results[results['exit'] == True]).index]
 
         plt.plot(spread.index, spread, label='Spread')
         plt.plot(sell.index, sell, color='r', linestyle='None', marker='^', label='Sell')
         plt.plot(buy.index, buy, color='g', linestyle='None', marker='^', label='Buy')
+        plt.plot(exit.index, exit, color='orange', linestyle='None', marker='^', label='Exit')
 
         plt.xticks(rotation=45, ha='right')
         plt.title('Buy and Sell Signals')
@@ -406,9 +414,12 @@ class AutoTrader:
         _, stock_X = train_test_split(self.price_X, test_size=0.2, shuffle=False)
         _, stock_Y = train_test_split(self.price_Y, test_size=0.2, shuffle=False)
 
+        # places where stock X was shorted and longed
         sell_X = stock_X[(results[results['sell'] == True]).index]
         buy_X = stock_X[(results[results['buy'] == True]).index]
 
+        #  if spread is long, X is long, and Y is short, so the buy and sell booleans
+        #  are reversed
         sell_Y = stock_Y[(results[results['buy'] == True]).index]
         buy_Y = stock_Y[(results[results['sell'] == True]).index]
 
@@ -418,8 +429,8 @@ class AutoTrader:
         plt.plot(buy_X.index, buy_X, color='g', linestyle='None', marker='^', label='Buy')
         plt.plot(sell_X.index, sell_X, color='r', linestyle='None', marker='^', label='Sell')
 
-        plt.plot(sell_Y.index, sell_Y, color='g', linestyle='None', marker='^')
-        plt.plot(buy_Y.index, buy_Y, color='r', linestyle='None', marker='^')
+        plt.plot(sell_Y.index, sell_Y, color='r', linestyle='None', marker='^')
+        plt.plot(buy_Y.index, buy_Y, color='g', linestyle='None', marker='^')
 
         plt.title(self.symbol_X + ' and ' + self.symbol_Y + ' with Buy and Sell Signals')
         plt.xlabel('Date')
