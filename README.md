@@ -1,5 +1,7 @@
 # Pairs Trading using ARIMA and XGBoost
 
+This project was made for COMP90072 at the University of Melbourne, which resulted in a weighted average mark (WAM) of 95% for the subject.
+
 Please see the Jupyter notebook to see how to use the code. 
 
 The utils file contains a lot of useful classes with useful methods for our data analysis.
